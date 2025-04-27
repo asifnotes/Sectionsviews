@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Faculty Section Viewer</title>
+    <!-- Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.2/html2pdf.bundle.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #eef2f7; color: #333; padding: 10px; }
+        .container { background: #fff; border-radius: 8px; max-width: 100%; margin: auto; padding: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        h1 { text-align: center; margin-bottom: 10px; font-size: 1.8em; }
+        p.description { text-align: center; color: #666; margin-bottom: 20px; font-size: 1em; }
+        /* Controls grid */
+        #controls { display: grid; grid-template-columns: 1fr; gap: 10px; margin-bottom: 20px; }
+        @media (min-width: 600px) { #controls { grid-template-columns: 1.2fr 1.2fr 1fr 1fr 1fr 1fr; } }
+        @media (min-width: 900px) { #controls { grid-template-columns: 2fr 2fr 1fr 1fr 1fr 1fr; } }
+        #controls label { display: block; font-size: 0.9em; margin-bottom: 4px; color: #555; }
+        #controls input[type="file"] { padding: 6px; border: 2px dashed #ccc; border-radius: 6px; background: #fafafa; cursor: pointer; font-size: 0.9em; }
+        #controls input, #controls select, #controls button { width: 100%; padding: 8px 12px; font-size: 0.95em; border: 1px solid #ccc; border-radius: 6px; }
+        #controls input:disabled, #controls select:disabled, #controls button:disabled { background: #eee; color: #999; cursor: not-allowed; }
+        #controls button { background: #007bff; color: #fff; border: none; transition: background 0.2s; }
+        #controls button:hover:not(:disabled) { background: #0056b3; }
+        /* Data area */
+        #dataSection { margin-top: 10px; }
+        .table-responsive { overflow-x: auto; margin-top: 10px; }
+        table { width: 100%; border-collapse: collapse; margin: 0 auto 20px; font-size: 0.9em; min-width: 500px; }
+        th, td { padding: 8px; border: 1px solid #ddd; text-align: center; }
+        th { background: #007bff; color: #fff; position: sticky; top: 0; z-index: 1; }
+        tr:nth-child(even) { background: #f9f9f9; }
+        tr:hover { background: #f1f1f1; }
+        .faculty-block { margin-top: 30px; }
+        .faculty-block h2 { color: #007bff; font-size: 1.2em; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+<div class="container" id="container">
+    <h1>Faculty Sections Viewer</h1>
+    <p class="description">Upload your file and filter by faculty or search by name. Download filtered data as CSV or PDF.</p>
+    <div id="controls">
+        <div>
+            <label for="fileInput">Upload File</label>
+            <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.json">
+        </div>
+        <div>
+            <label for="searchInput">Search Faculty</label>
+            <input type="text" id="searchInput" placeholder="Type a faculty name..." list="nameSuggestions" disabled>
+            <datalist id="nameSuggestions"></datalist>
+        </div>
+        <div><label>&nbsp;</label><button id="searchBtn" disabled>Search</button></div>
+        <div>
+            <label for="facultySelect">Filter by Faculty</label>
+            <select id="facultySelect" disabled><option value="">All Faculties</option></select>
+        </div>
+        <div><label>&nbsp;</label><button id="downloadCsvBtn" disabled>Download CSV</button></div>
+        <div><label>&nbsp;</label><button id="downloadPdfBtn" disabled>Download PDF</button></div>
+    </div>
+    <div id="dataSection">
+        <div id="output"><p>Please upload a supported file (Excel, CSV, JSON) to view content.</p></div>
+    </div>
+</div>
+
+<script>
+    let allData = [], headers = [], facultyNames = [];
+    const fileInput = document.getElementById('fileInput');
+    const searchInput = document.getElementById('searchInput');
+    const searchBtn = document.getElementById('searchBtn');
+    const facultySelect = document.getElementById('facultySelect');
+    const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+    const downloadPdfBtn = document.getElementById('downloadPdfBtn');
+    const output = document.getElementById('output');
+    const nameList = document.getElementById('nameSuggestions');
+
+    fileInput.addEventListener('change', handleFile);
+    searchBtn.addEventListener('click', renderTable);
+    facultySelect.addEventListener('change', renderTable);
+    downloadCsvBtn.addEventListener('click', downloadCSV);
+    downloadPdfBtn.addEventListener('click', downloadPDF);
+
+    function handleFile(e) {
+      const file = e.target.files[0]; if (!file) return;
+      resetUI();
+      const ext = file.name.split('.').pop().toLowerCase();
+      const reader = new FileReader();
+      reader.onload = evt => {
+        const data = new Uint8Array(evt.target.result);
+        try {
+          if (ext === 'csv') {
+            const wb = XLSX.read(data, { type: 'array' });
+            allData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+          } else if (ext === 'json') {
+            allData = JSON.parse(new TextDecoder().decode(data));
+          } else {
+            const wb = XLSX.read(data, { type: 'array' });
+            allData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+          }
+        } catch {
+          alert('Error reading file.'); return;
+        }
+        headers = Object.keys(allData[0] || {});
+        prepareUI(); renderTable();
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function resetUI() {
+      output.innerHTML = '<p>Loading data...</p>';
+      [searchInput, searchBtn, facultySelect, downloadCsvBtn, downloadPdfBtn].forEach(el => el.disabled = true);
+      nameList.innerHTML = '';
+      facultySelect.innerHTML = '<option value="">All Faculties</option>';
+    }
+
+    function prepareUI() {
+      extractFacultyNames(); populateDatalist(); populateFacultySelect();
+      [searchInput, searchBtn, facultySelect, downloadCsvBtn, downloadPdfBtn].forEach(el => el.disabled = false);
+      output.innerHTML = '';
+    }
+
+    function extractFacultyNames() {
+      const set = new Set(); allData.forEach(r => { const f = findFaculty(r); if (f) set.add(f); });
+      facultyNames = Array.from(set).sort();
+    }
+
+    function populateDatalist() {
+      nameList.innerHTML = facultyNames.map(n => `<option value="${n}">`).join('');
+    }
+
+    function populateFacultySelect() {
+      facultySelect.innerHTML = '<option value="">All Faculties</option>' + facultyNames.map(n => `<option value="${n}">${n}</option>`).join('');
+    }
+
+    function findFaculty(row) {
+      const key = Object.keys(row).find(k => k.toLowerCase().includes('faculty'));
+      return key ? row[key] : '';
+    }
+
+    function renderTable() {
+      if (!allData.length) { output.innerHTML = '<p>No data to display.</p>'; return; }
+      const nameQuery = searchInput.value.toLowerCase(); const sf = facultySelect.value;
+      const filtered = allData.filter(r => { const fn = findFaculty(r).toLowerCase(); return (sf ? fn === sf.toLowerCase() : true) && (!nameQuery || fn.includes(nameQuery)); });
+      if (!filtered.length) { output.innerHTML = '<p>No matches found.</p>'; return; }
+      const groups = {};
+      filtered.forEach(r => { const fn = findFaculty(r) || 'Unknown'; (groups[fn] = groups[fn] || []).push(r); });
+      let html = '';
+      for (let f in groups) {
+        html += `<div class="faculty-block"><h2>${f}</h2><div class="table-responsive"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>`;
+        groups[f].forEach(r => { html += `<tr>${headers.map(h=>`<td>${r[h]}</td>`).join('')}</tr>`; });
+        html += '</tbody></table></div></div>';
+      }
+      output.innerHTML = html;
+    }
+
+    function downloadCSV() {
+      if (!allData.length) return alert('No data to download');
+      const rows = [headers.join(',')]; const nameQuery = searchInput.value.toLowerCase(); const sf = facultySelect.value;
+      allData.forEach(r => { const fn = findFaculty(r).toLowerCase(); if ((sf && fn !== sf.toLowerCase()) || (nameQuery && !fn.includes(nameQuery))) return; rows.push(headers.map(h=>`"${String(r[h]).replace(/"/g,'""')}"`).join(',')); });
+      const blob = new Blob(['\uFEFF' + rows.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'faculty_sections.csv'; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    }
+
+    function downloadPDF() {
+      if (!allData.length) return alert('No data to download');
+      // Hide controls during PDF render
+      document.getElementById('controls').style.display = 'none';
+      html2pdf().set({ margin:10, filename:'faculty_sections.pdf', image:{type:'jpeg',quality:0.98}, html2canvas:{scale:2} })
+        .from(document.getElementById('dataSection')).save()
+        .then(() => document.getElementById('controls').style.display = 'grid');
+    }
+</script>
+</body>
+</html>
