@@ -9,12 +9,17 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
+    # Step 1: Check out the code from the repository
     - name: Checkout Code
       uses: actions/checkout@v4
-      
+
+    # Step 2: Set up Docker Buildx (This is helpful for building multi-platform images)
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
+    # Step 3: Build the Docker image
     - name: Build Docker Image
-      run: docker build . --file Dockerfile --tag my-image-name:latest
+      run: |
+        docker build . --file Dockerfile --tag my-image-name:latest
