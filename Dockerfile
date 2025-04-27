@@ -1,14 +1,11 @@
-# Use an official lightweight image (you can change it depending on your project)
-FROM python:3.11-slim
+# Use an official nginx image from the Docker Hub
+FROM nginx:alpine
 
-# Set working directory
-WORKDIR /app
+# Copy the index.html to the nginx HTML directory
+COPY index.html /usr/share/nginx/html/index.html
 
-# Copy all project files
-COPY . .
+# Expose port 80 for the container to be accessed
+EXPOSE 80
 
-# Install dependencies (optional if you have requirements.txt)
-# RUN pip install --no-cache-dir -r requirements.txt
-
-# Default command to run your app
-CMD ["python3", "app.py"]
+# Run nginx in the foreground
+CMD ["nginx", "-g", "daemon off;"]
